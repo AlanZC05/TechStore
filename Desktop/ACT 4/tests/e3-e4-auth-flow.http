@@ -1,0 +1,149 @@
+### ============================================================================
+### TechStore MX — Evidence 3 & Evidence 4 REST Client Collection
+### Services:
+###   - Auth Service:     http://localhost:4001
+###   - FX Microservice:  http://localhost:4002
+###   - Main Backend:     http://localhost:4000
+### ============================================================================
+
+@authUrl = http://localhost:4001/api/v1/auth
+@fxUrl = http://localhost:4002/api/v1/rates
+@backendUrl = http://localhost:4000/api/v1/products
+
+### ----------------------------------------------------------------------------
+### 1. LOGIN AS ADMIN (200 OK + Issues HS256 JWT & HttpOnly refreshToken Cookie)
+### ----------------------------------------------------------------------------
+# @name loginAdmin
+POST {{authUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "admin.demo@techstore.test",
+  "password": "AdminPass123!"
+}
+
+### Capture Admin JWT Access Token from loginAdmin response
+@adminToken = {{loginAdmin.response.body.accessToken}}
+
+### ----------------------------------------------------------------------------
+### 2. LOGIN AS CUSTOMER (200 OK + Role: "customer")
+### ----------------------------------------------------------------------------
+# @name loginCustomer
+POST {{authUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "customer.demo@techstore.test",
+  "password": "CustomerPass123!"
+}
+
+### Capture Customer JWT Access Token from loginCustomer response
+@customerToken = {{loginCustomer.response.body.accessToken}}
+
+### ----------------------------------------------------------------------------
+### 3. LOGIN WITH WRONG PASSWORD (401 Unauthorized)
+### ----------------------------------------------------------------------------
+POST {{authUrl}}/login
+Content-Type: application/json
+
+{
+  "email": "admin.demo@techstore.test",
+  "password": "WrongPassword123!"
+}
+
+### ----------------------------------------------------------------------------
+### 4. VERIFY / DECODE ACTIVE TOKEN VIA /me (200 OK)
+### ----------------------------------------------------------------------------
+GET {{authUrl}}/me
+Authorization: Bearer {{adminToken}}
+
+### ----------------------------------------------------------------------------
+### 5. PUBLIC FX ENDPOINT: GET CURRENT USD/MXN EXCHANGE RATE (200 OK)
+### ----------------------------------------------------------------------------
+GET {{fxUrl}}/current?base=USD&target=MXN
+Accept: application/json
+
+### ----------------------------------------------------------------------------
+### 6. PUBLIC FX ENDPOINT: CONVERT 1500 MXN TO USD (200 OK)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/convert
+Content-Type: application/json
+
+{
+  "amount": 1500,
+  "from": "MXN",
+  "to": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 7. INPUT VALIDATION FAILURE: NEGATIVE AMOUNT & INVALID CURRENCY (400 Bad Request)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/convert
+Content-Type: application/json
+
+{
+  "amount": -100,
+  "from": "EUR",
+  "to": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 8. PROTECTED FX REFRESH: MISSING TOKEN (401 Unauthorized)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/refresh
+Content-Type: application/json
+
+{
+  "currency": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 9. PROTECTED FX REFRESH: TAMPERED JWT SIGNATURE (401 Unauthorized)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/refresh
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfOWY4YTdkNmM1YjRlIiwicm9sZSI6ImFkbWluIiwiaXNzIjoidGVjaHN0b3JlLWF1dGgtc2VydmljZSJ9.tampered_signature_12345
+Content-Type: application/json
+
+{
+  "currency": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 10. PROTECTED FX REFRESH: CUSTOMER ROLE FORBIDDEN (403 Forbidden - RBAC)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/refresh
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "currency": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 11. PROTECTED FX REFRESH: ADMIN ROLE SUCCESS (201 Created - Banxico SF43718)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/refresh
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "currency": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 12. UPSTREAM BANXICO FAILURE FALLBACK SIMULATION (502 Bad Gateway)
+### ----------------------------------------------------------------------------
+POST {{fxUrl}}/refresh?simulateDown=true
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "currency": "USD"
+}
+
+### ----------------------------------------------------------------------------
+### 13. MAIN BACKEND HARDWARE CATALOG WITH LIVE MXN & USD PRICES (200 OK)
+### ----------------------------------------------------------------------------
+GET {{backendUrl}}
+Accept: application/json
+
